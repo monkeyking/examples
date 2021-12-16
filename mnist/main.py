@@ -121,13 +121,31 @@ def main():
     test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
 
     model = Net().to(device)
-    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+    # optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch)
-        test(model, device, test_loader)
-        scheduler.step()
+    # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+    # for epoch in range(1, args.epochs + 1):
+    #     train(args, model, device, train_loader, optimizer, epoch)
+    #     test(model, device, test_loader)
+    #     scheduler.step()
+
+    # QAT section
+    import torch.quantization.quantize_fx as quantize_fx
+    import copy
+    model_to_quantize = copy.deepcopy(model)
+    qconfig_dict = {"": torch.quantization.get_default_qat_qconfig('qnnpack')}
+    model_to_quantize.train()
+    # prepare
+    model_prepared = quantize_fx.prepare_qat_fx(model_to_quantize, qconfig_dict)
+    # training loop (not shown)
+    # quantize
+    model_quantized = quantize_fx.convert_fx(model_prepared)
+
+    #Export PNNX
+    net = model_quantized.eval()
+    x = torch.rand(1, 1, 28, 28)
+    mod = torch.jit.trace(net, x)
+    torch.jit.save(mod, "mnist_new.pt")
 
     if args.save_model:
         torch.save(model.state_dict(), "mnist_cnn.pt")
